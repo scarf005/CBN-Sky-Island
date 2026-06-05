@@ -4,164 +4,58 @@
 local mod = game.mod_runtime[game.current_mod]
 local util = require("util")
 
+local function register_iuse(id, fn_name)
+  game.iuse_functions[id] = {
+    use = function(params)
+      return mod[fn_name](params.user, params.item, params.pos)
+    end
+  }
+end
+
 -- Register item use functions
-game.iuse_functions["SKYISLAND_WARP_OBELISK"] = {
-  use = function(params) return mod.use_warp_obelisk(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_RETURN_OBELISK"] = {
-  use = function(params) return mod.use_return_obelisk(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_HEART_MENU"] = {
-  use = function(params) return mod.use_heart_menu(params.user, params.item, params.pos) end
-}
+register_iuse("SKYISLAND_WARP_OBELISK", "use_warp_obelisk")
+register_iuse("SKYISLAND_RETURN_OBELISK", "use_return_obelisk")
+register_iuse("SKYISLAND_HEART_MENU", "use_heart_menu")
 
 -- Upgrade item activations
-game.iuse_functions["SKYISLAND_UPGRADE_STABILITY1"] = {
-  use = function(params) return mod.use_upgrade_stability1(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_STABILITY2"] = {
-  use = function(params) return mod.use_upgrade_stability2(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_STABILITY3"] = {
-  use = function(params) return mod.use_upgrade_stability3(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_SCOUTING1"] = {
-  use = function(params) return mod.use_upgrade_scouting1(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_SCOUTING2"] = {
-  use = function(params) return mod.use_upgrade_scouting2(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_EXITS1"] = {
-  use = function(params) return mod.use_upgrade_exits1(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_RAIDLENGTH1"] = {
-  use = function(params) return mod.use_upgrade_raidlength1(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_RAIDLENGTH2"] = {
-  use = function(params) return mod.use_upgrade_raidlength2(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_BASEMENTS"] = {
-  use = function(params) return mod.use_upgrade_basements(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_ROOFS"] = {
-  use = function(params) return mod.use_upgrade_roofs(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_LABS"] = {
-  use = function(params) return mod.use_upgrade_labs(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_SCOUTING_CLAIRVOYANCE1"] = {
-  use = function(params) return mod.use_upgrade_scouting_clairvoyance1(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_SCOUTING_CLAIRVOYANCE2"] = {
-  use = function(params) return mod.use_upgrade_scouting_clairvoyance2(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_BONUSMISSIONS1"] = {
-  use = function(params) return mod.use_upgrade_bonusmissions1(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_BONUSMISSIONS2"] = {
-  use = function(params) return mod.use_upgrade_bonusmissions2(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_BONUSMISSIONS3"] = {
-  use = function(params) return mod.use_upgrade_bonusmissions3(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_BONUSMISSIONS4"] = {
-  use = function(params) return mod.use_upgrade_bonusmissions4(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_BONUSMISSIONS5"] = {
-  use = function(params) return mod.use_upgrade_bonusmissions5(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_HARDMISSIONS1"] = {
-  use = function(params) return mod.use_upgrade_hardmissions1(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_HARDMISSIONS2"] = {
-  use = function(params) return mod.use_upgrade_hardmissions2(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_SLAUGHTER"] = {
-  use = function(params) return mod.use_upgrade_slaughter(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_UPGRADE_LANDING_FLIGHT"] = {
-  use = function(params) return mod.use_upgrade_landing_flight(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_PROOF_DETERMINATION"] = function(...)
-  return mod.use_proof_determination(...)
-end
-
-game.iuse_functions["SKYISLAND_PROOF_MASTERY"] = function(...)
-  return mod.use_proof_mastery(...)
-end
+register_iuse("SKYISLAND_UPGRADE_STABILITY1", "use_upgrade_stability1")
+register_iuse("SKYISLAND_UPGRADE_STABILITY2", "use_upgrade_stability2")
+register_iuse("SKYISLAND_UPGRADE_STABILITY3", "use_upgrade_stability3")
+register_iuse("SKYISLAND_UPGRADE_SCOUTING1", "use_upgrade_scouting1")
+register_iuse("SKYISLAND_UPGRADE_SCOUTING2", "use_upgrade_scouting2")
+register_iuse("SKYISLAND_UPGRADE_EXITS1", "use_upgrade_exits1")
+register_iuse("SKYISLAND_UPGRADE_RAIDLENGTH1", "use_upgrade_raidlength1")
+register_iuse("SKYISLAND_UPGRADE_RAIDLENGTH2", "use_upgrade_raidlength2")
+register_iuse("SKYISLAND_UPGRADE_BASEMENTS", "use_upgrade_basements")
+register_iuse("SKYISLAND_UPGRADE_ROOFS", "use_upgrade_roofs")
+register_iuse("SKYISLAND_UPGRADE_LABS", "use_upgrade_labs")
+register_iuse("SKYISLAND_UPGRADE_SCOUTING_CLAIRVOYANCE1", "use_upgrade_scouting_clairvoyance1")
+register_iuse("SKYISLAND_UPGRADE_SCOUTING_CLAIRVOYANCE2", "use_upgrade_scouting_clairvoyance2")
+register_iuse("SKYISLAND_UPGRADE_BONUSMISSIONS1", "use_upgrade_bonusmissions1")
+register_iuse("SKYISLAND_UPGRADE_BONUSMISSIONS2", "use_upgrade_bonusmissions2")
+register_iuse("SKYISLAND_UPGRADE_BONUSMISSIONS3", "use_upgrade_bonusmissions3")
+register_iuse("SKYISLAND_UPGRADE_BONUSMISSIONS4", "use_upgrade_bonusmissions4")
+register_iuse("SKYISLAND_UPGRADE_BONUSMISSIONS5", "use_upgrade_bonusmissions5")
+register_iuse("SKYISLAND_UPGRADE_HARDMISSIONS1", "use_upgrade_hardmissions1")
+register_iuse("SKYISLAND_UPGRADE_HARDMISSIONS2", "use_upgrade_hardmissions2")
+register_iuse("SKYISLAND_UPGRADE_SLAUGHTER", "use_upgrade_slaughter")
+register_iuse("SKYISLAND_UPGRADE_LANDING_FLIGHT", "use_upgrade_landing_flight")
+register_iuse("SKYISLAND_PROOF_DETERMINATION", "use_proof_determination")
+register_iuse("SKYISLAND_PROOF_MASTERY", "use_proof_mastery")
 
 -- Utility item activations
-game.iuse_functions["SKYISLAND_QUICKHEAL"] = {
-  use = function(params) return mod.use_quickheal(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_EARTHBOUND_PILL"] = {
-  use = function(params) return mod.use_earthbound_pill(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_SKYWARD_BEACON"] = {
-  use = function(params) return mod.use_skyward_beacon(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_WARP_CRYSTAL"] = {
-  use = function(params) return mod.use_warp_crystal(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_ANIMAL_TELEPORTER"] = {
-  use = function(params) return mod.use_animal_teleporter(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_WARP_FOCUS"] = {
-  use = function(params) return mod.use_warp_focus(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_IMPRINT_AUTODOC"] = {
-  use = function(params) return mod.use_imprint_autodoc(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_IMPRINT_AUTODOC_COUCH"] = {
-  use = function(params) return mod.use_imprint_autodoc_couch(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_IMPRINT_NANOFAB_BODY"] = {
-  use = function(params) return mod.use_imprint_nanofab_body(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_IMPRINT_NANOFAB_PANEL"] = {
-  use = function(params) return mod.use_imprint_nanofab_panel(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_IMPRINT_CVD_BODY"] = {
-  use = function(params) return mod.use_imprint_cvd_body(params.user, params.item, params.pos) end
-}
-
-game.iuse_functions["SKYISLAND_IMPRINT_CVD_PANEL"] = {
-  use = function(params) return mod.use_imprint_cvd_panel(params.user, params.item, params.pos) end
-}
+register_iuse("SKYISLAND_QUICKHEAL", "use_quickheal")
+register_iuse("SKYISLAND_EARTHBOUND_PILL", "use_earthbound_pill")
+register_iuse("SKYISLAND_SKYWARD_BEACON", "use_skyward_beacon")
+register_iuse("SKYISLAND_WARP_CRYSTAL", "use_warp_crystal")
+register_iuse("SKYISLAND_ANIMAL_TELEPORTER", "use_animal_teleporter")
+register_iuse("SKYISLAND_WARP_FOCUS", "use_warp_focus")
+register_iuse("SKYISLAND_IMPRINT_AUTODOC", "use_imprint_autodoc")
+register_iuse("SKYISLAND_IMPRINT_AUTODOC_COUCH", "use_imprint_autodoc_couch")
+register_iuse("SKYISLAND_IMPRINT_NANOFAB_BODY", "use_imprint_nanofab_body")
+register_iuse("SKYISLAND_IMPRINT_NANOFAB_PANEL", "use_imprint_nanofab_panel")
+register_iuse("SKYISLAND_IMPRINT_CVD_BODY", "use_imprint_cvd_body")
+register_iuse("SKYISLAND_IMPRINT_CVD_PANEL", "use_imprint_cvd_panel")
 
 -- Register hooks
 table.insert(game.hooks.on_game_started, function(...)
