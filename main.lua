@@ -16,6 +16,10 @@ local iuse = require("iuse")
 -- Initialize storage defaults (only for new games)
 -- These will be overwritten by saved data on load
 storage.home_location = storage.home_location or nil
+storage.home_dimension_id = storage.home_dimension_id or nil
+storage.home_omt = storage.home_omt or nil
+storage.current_raid_dimension_id = storage.current_raid_dimension_id or nil
+storage.raid_dimension_serial = storage.raid_dimension_serial or 0
 storage.is_away_from_home = storage.is_away_from_home or false
 storage.warp_pulse_count = storage.warp_pulse_count or 0
 storage.raids_total = storage.raids_total or 0
@@ -457,6 +461,10 @@ end
 mod.on_game_started = function()
   -- Reset to defaults for new game
   storage.home_location = nil
+  storage.home_dimension_id = nil
+  storage.home_omt = nil
+  storage.current_raid_dimension_id = nil
+  storage.raid_dimension_serial = 0
   storage.is_away_from_home = false
   storage.warp_pulse_count = 0
   storage.warp_pulse_accumulated = 0
@@ -466,6 +474,8 @@ mod.on_game_started = function()
 
   -- Register the global warp sickness hook (runs every minute, checks conditions)
   warp_sickness.register_global_hook(storage)
+
+  teleport.ensure_home_dimension(storage)
 
   util.debug_log("Sky Islands: New game started")
   gapi.add_msg(locale.gettext("Sky Islands PoC loaded! Use warp remote to start."))

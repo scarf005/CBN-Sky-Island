@@ -187,6 +187,260 @@ local LOCATION_CONFIG = {
   }
 }
 
+local HOME_DIMENSION_ID = "sky_island_home"
+local HOME_OMT = { x = 0, y = 0, z = 10 }
+local HOME_BOUNDS_MIN_OMT = { x = -2, y = -2, z = 9 }
+local HOME_BOUNDS_MAX_OMT = { x = 2, y = 2, z = 10 }
+local RAID_DIMENSION_PREFIX = "sky_island_raid_"
+local RAID_DIMENSION_STRIDE = 4096
+local DESTINATION_SEARCH_ATTEMPTS = 8
+local DESTINATION_SEARCH_SAMPLE_LIMIT = 64
+local DESTINATION_FALLBACK_SAMPLE_LIMIT = 192
+
+local teleport_to_omt
+
+local function abs_omt_from_table(pos)
+  return TripointAbsOmt.new(pos.x, pos.y, pos.z)
+end
+
+local function dimension_travel_available()
+  return gapi and type(gapi.place_player_dimension_at) == "function"
+end
+
+local function get_current_dimension_id()
+  if gapi and type(gapi.get_current_dimension_id) == "function" then
+    return gapi.get_current_dimension_id()
+  end
+  return ""
+end
+
+local function remember_player_home(storage)
+  local player = gapi.get_avatar()
+  if not player then return end
+
+  local player_pos_ms = player:get_pos_ms()
+  local home_abs_ms = gapi.get_map():bub_to_abs(player_pos_ms)
+  local home_omt = home_abs_ms:to_omt()
+
+  storage.home_location = { x = home_abs_ms.x, y = home_abs_ms.y, z = home_abs_ms.z }
+  storage.home_omt = { x = home_omt.x, y = home_omt.y, z = home_omt.z }
+  storage.home_dimension_id = get_current_dimension_id()
+
+  util.debug_log(string.format(
+    "Home location set to dim='%s' abs_ms=(%d,%d,%d) omt=(%d,%d,%d)",
+    storage.home_dimension_id,
+    home_abs_ms.x,
+    home_abs_ms.y,
+    home_abs_ms.z,
+    home_omt.x,
+    home_omt.y,
+    home_omt.z
+  ))
+end
+
+function teleport.ensure_home_dimension(storage)
+  if not dimension_travel_available() then
+    return false
+  end
+
+  if get_current_dimension_id() == HOME_DIMENSION_ID then
+    if not storage.home_location then
+      remember_player_home(storage)
+    end
+    storage.home_dimension_id = HOME_DIMENSION_ID
+    return true
+  end
+
+  local entered = gapi.place_player_dimension_at({
+    dimension_id = HOME_DIMENSION_ID,
+    target_omt = abs_omt_from_table(HOME_OMT),
+    world_type = "pocket_dimension",
+    bounds_min_omt = abs_omt_from_table(HOME_BOUNDS_MIN_OMT),
+    bounds_max_omt = abs_omt_from_table(HOME_BOUNDS_MAX_OMT),
+    pregen_special_id = "Sky Island",
+    pregen_special_omt = abs_omt_from_table(HOME_OMT),
+  })
+
+  if entered then
+    storage.home_dimension_id = HOME_DIMENSION_ID
+    remember_player_home(storage)
+    util.debug_log("Sky Island home moved into pocket dimension")
+    return true
+  end
+
+  gapi.add_msg(locale.gettext("ERROR: Could not enter the Sky Island pocket dimension."))
+  util.debug_log("ERROR: place_player_dimension_at failed for Sky Island home")
+  return false
+end
+
+local function add_location_search_types(params, selected_location, loc_config)
+  params:add_type(loc_config.terrain_type, loc_config.match_type)
+
+  if selected_location == "field" then
+    params:add_type("forest", OtMatchType.EXACT)
+    params:add_type("forest_thick", OtMatchType.EXACT)
+  end
+end
+
+local function build_location_search_params(selected_location, loc_config, min_distance, max_distance)
+  local params = OmtFindParams.new()
+  add_location_search_types(params, selected_location, loc_config)
+  params:set_search_range(min_distance, max_distance)
+  params:set_search_layers(loc_config.z_level, loc_config.z_level)
+  return params
+end
+
+local function find_raid_destination(search_origin, selected_location, loc_config, config)
+  local search_span = math.max(0, config.max_distance - config.min_distance)
+  local band_width = math.max(40, math.min(160, math.floor(search_span / 4)))
+  local max_band_start = math.max(config.min_distance, config.max_distance - band_width)
+
+  for attempt = 1, DESTINATION_SEARCH_ATTEMPTS do
+    local band_min = config.min_distance
+    if max_band_start > config.min_distance then
+      band_min = gapi.rng(config.min_distance, max_band_start)
+    end
+    local band_max = math.min(config.max_distance, band_min + band_width)
+    local params = build_location_search_params(selected_location, loc_config, band_min, band_max)
+    params.max_results = DESTINATION_SEARCH_SAMPLE_LIMIT
+    local dest_omt = overmapbuffer.find_random(search_origin, params)
+
+    if dest_omt then
+      util.debug_log(string.format(
+        "Found raid location on attempt %d in band %d-%d: (%d,%d,%d)",
+        attempt,
+        band_min,
+        band_max,
+        dest_omt.x,
+        dest_omt.y,
+        dest_omt.z
+      ))
+      return dest_omt
+    end
+  end
+
+  local fallback_params = build_location_search_params(
+    selected_location,
+    loc_config,
+    config.min_distance,
+    config.max_distance
+  )
+  fallback_params.max_results = DESTINATION_FALLBACK_SAMPLE_LIMIT
+  local fallback_dest = overmapbuffer.find_random(search_origin, fallback_params)
+  if fallback_dest then
+    util.debug_log(string.format("Fallback raid search found location at (%d,%d,%d)", fallback_dest.x, fallback_dest.y, fallback_dest.z))
+    return fallback_dest
+  end
+
+  local closest_params = build_location_search_params(
+    selected_location,
+    loc_config,
+    config.min_distance,
+    config.max_distance
+  )
+  local closest_dest = overmapbuffer.find_closest(search_origin, closest_params)
+  if closest_dest then
+    util.debug_log(string.format("Closest raid search found location at (%d,%d,%d)", closest_dest.x, closest_dest.y, closest_dest.z))
+    return closest_dest
+  end
+
+  return nil
+end
+
+local function make_raid_origin(storage, z_level)
+  local serial = storage.raid_dimension_serial or 1
+  local base = serial * RAID_DIMENSION_STRIDE
+  local y_sign = gapi.rng(0, 1) == 0 and -1 or 1
+  return TripointAbsOmt.new(
+    base + gapi.rng(-1024, 1024),
+    (base * y_sign) + gapi.rng(-1024, 1024),
+    z_level
+  )
+end
+
+local function enter_new_raid_dimension(storage, loc_config)
+  if not dimension_travel_available() then
+    return nil
+  end
+
+  storage.raid_dimension_serial = (storage.raid_dimension_serial or 0) + 1
+  local raid_dimension_id = string.format("%s%06d", RAID_DIMENSION_PREFIX, storage.raid_dimension_serial)
+  local raid_origin = make_raid_origin(storage, loc_config.z_level)
+
+  local entered = gapi.place_player_dimension_at({
+    dimension_id = raid_dimension_id,
+    target_omt = raid_origin,
+    world_type = "default",
+  })
+
+  if not entered then
+    storage.raid_dimension_serial = storage.raid_dimension_serial - 1
+    util.debug_log(string.format("ERROR: Could not enter raid dimension '%s'", raid_dimension_id))
+    return nil
+  end
+
+  storage.current_raid_dimension_id = raid_dimension_id
+  util.debug_log(string.format(
+    "Entered raid dimension '%s' at search origin (%d,%d,%d)",
+    raid_dimension_id,
+    raid_origin.x,
+    raid_origin.y,
+    raid_origin.z
+  ))
+  return raid_origin
+end
+
+local function get_stored_home_omt(storage)
+  local home_omt = storage.home_omt or HOME_OMT
+  return TripointAbsOmt.new(home_omt.x, home_omt.y, home_omt.z)
+end
+
+local function place_player_at_stored_home(storage)
+  if not storage.home_location then
+    return
+  end
+
+  local home_abs_ms = TripointAbsMs.new(
+    storage.home_location.x,
+    storage.home_location.y,
+    storage.home_location.z
+  )
+  local local_pos = gapi.get_map():abs_to_bub(home_abs_ms)
+  gapi.place_player_local_at(local_pos)
+end
+
+local function return_to_home(storage)
+  if dimension_travel_available() and storage.home_dimension_id == HOME_DIMENSION_ID then
+    local entered = gapi.place_player_dimension_at({
+      dimension_id = HOME_DIMENSION_ID,
+      target_omt = get_stored_home_omt(storage),
+    })
+
+    if not entered then
+      gapi.add_msg(locale.gettext("ERROR: Could not return to the Sky Island pocket dimension."))
+      util.debug_log("ERROR: place_player_dimension_at failed while returning home")
+      return false
+    end
+
+    place_player_at_stored_home(storage)
+    gapi.add_msg(locale.gettext("You feel reality shift around you..."))
+    return true
+  end
+
+  if not storage.home_location then
+    return false
+  end
+
+  local home_abs_ms = TripointAbsMs.new(
+    storage.home_location.x,
+    storage.home_location.y,
+    storage.home_location.z
+  )
+  local home_omt = home_abs_ms:to_omt()
+  teleport_to_omt(home_omt, TripointRelOmt.new(0, -1, 0))
+  return true
+end
+
 -- Helper: Get player position in OMT coordinates
 local function get_player_omt()
   local player = gapi.get_avatar()
@@ -290,7 +544,7 @@ end
 
 -- Helper: Teleport player to OMT coordinates with offset
 -- spawn_filter is an optional func(game_map, pos) for spawn-type-specific safety checks
-local function teleport_to_omt(omt, offset_tiles, spawn_filter)
+teleport_to_omt = function(omt, offset_tiles, spawn_filter)
   local player = gapi.get_avatar()
 
   if player then
@@ -530,15 +784,17 @@ function teleport.use_warp_obelisk(who, item, pos, storage, missions, warp_sickn
     return 0
   end
 
-  -- Store home location as absolute MS coordinates (for resurrection) - only once
-  if not storage.home_location then
-    local player_pos_ms = who:get_pos_ms()
-    local home_abs_ms = gapi.get_map():bub_to_abs(player_pos_ms)
-    storage.home_location = { x = home_abs_ms.x, y = home_abs_ms.y, z = home_abs_ms.z }
-    util.debug_log(string.format("Home location set to: %d, %d, %d", home_abs_ms.x, home_abs_ms.y, home_abs_ms.z))
+  -- On BN builds with dimension travel support, keep the sanctuary in a bounded pocket dimension.
+  if dimension_travel_available() then
+    if not teleport.ensure_home_dimension(storage) then
+      return 0
+    end
+    who = gapi.get_avatar()
+  elseif not storage.home_location then
+    remember_player_home(storage)
   end
 
-  -- Also get OMT for teleportation
+  -- Also get OMT for legacy same-dimension teleportation/search fallback.
   local home_omt = get_player_omt()
   if not home_omt then
     gapi.add_msg(locale.gettext("ERROR: Could not determine position!"))
@@ -664,38 +920,30 @@ function teleport.use_warp_obelisk(who, item, pos, storage, missions, warp_sickn
   end
 
   gapi.add_msg(string.format(locale.gettext("Initiating %s to %s..."), config.name, loc_config.name))
+  save_island_animals(storage)
   gapi.add_msg(locale.gettext("Searching for suitable location..."))
 
-  -- Build search parameters based on location type
-  local params = OmtFindParams.new()
-  params:add_type(loc_config.terrain_type, loc_config.match_type)
-
-  -- For field starts, also allow common wilderness terrain types.
-  if selected_location == "field" then
-    params:add_type("forest", OtMatchType.EXACT)
-    params:add_type("forest_thick", OtMatchType.EXACT)
+  local search_origin = nil
+  if dimension_travel_available() then
+    search_origin = enter_new_raid_dimension(storage, loc_config)
+    if not search_origin then
+      gapi.add_msg(locale.gettext("WARNING: Could not create a fresh expedition dimension. Aborting warp."))
+      if loc_config.catalyst_item then
+        who:add_item_with_id(ItypeId.new(loc_config.catalyst_item), 1)
+        gapi.add_msg(locale.gettext("Your Labs Catalyst is returned."))
+      end
+      return 0
+    end
+  else
+    -- Use ground-level origin for legacy same-world searches (sky islands are at z > 0).
+    search_origin = TripointAbsOmt.new(home_omt.x, home_omt.y, loc_config.z_level)
   end
-
-  -- Set search range
-  params:set_search_range(config.min_distance, config.max_distance)
-  -- Bound Lua overmap searches so the UI does not appear to hang while finding every match in range.
-  params.max_results = 32
-  -- Search at the appropriate z-level
-  params:set_search_layers(loc_config.z_level, loc_config.z_level)
-
-  -- Use ground-level origin for searching (sky islands are at z > 0)
-  local search_origin = TripointAbsOmt.new(home_omt.x, home_omt.y, loc_config.z_level)
 
   util.debug_log(string.format("Searching for %s terrain in range %d-%d at z=%d from (%d, %d, %d)",
     loc_config.terrain_type, config.min_distance, config.max_distance, loc_config.z_level,
     search_origin.x, search_origin.y, search_origin.z))
 
-  -- Debug: Try find_all to see how many results we get
-  -- local all_results = overmapbuffer.find_all(search_origin, params)
-  -- util.debug_log(string.format("find_all returned %d results", #all_results))
-
-  -- Find a random location matching parameters
-  local dest_omt = overmapbuffer.find_random(search_origin, params)
+  local dest_omt = find_raid_destination(search_origin, selected_location, loc_config, config)
 
   if dest_omt then
     util.debug_log(string.format("Found raid location at (%d, %d, %d)", dest_omt.x, dest_omt.y, dest_omt.z))
@@ -703,6 +951,9 @@ function teleport.use_warp_obelisk(who, item, pos, storage, missions, warp_sickn
   else
     gapi.add_msg("WARNING: Could not find suitable terrain. Aborting warp.")
     util.debug_log("ERROR: Terrain search failed!")
+    if dimension_travel_available() then
+      return_to_home(storage)
+    end
     -- Refund catalyst if we consumed one
     if loc_config.catalyst_item then
       who:add_item_with_id(ItypeId.new(loc_config.catalyst_item), 1)
@@ -711,12 +962,12 @@ function teleport.use_warp_obelisk(who, item, pos, storage, missions, warp_sickn
     return 0
   end
 
-  -- Two-stage teleport to prevent map revelation from z=10
-  -- First teleport: Move to z=0 at home x,y (ground level should exist below sky island)
-  -- Second teleport: Move to actual destination
-  local intermediate_omt = TripointAbsOmt.new(home_omt.x, home_omt.y, 0)
-  util.debug_log("Intermediate teleport to z=0 to prevent map revelation")
-  gapi.place_player_overmap_at(intermediate_omt)
+  -- Two-stage teleport to prevent map revelation from z=10 in legacy same-world mode.
+  if not dimension_travel_available() then
+    local intermediate_omt = TripointAbsOmt.new(home_omt.x, home_omt.y, 0)
+    util.debug_log("Intermediate teleport to z=0 to prevent map revelation")
+    gapi.place_player_overmap_at(intermediate_omt)
+  end
 
   -- Determine spawn filter based on location type
   local spawn_filter = nil
@@ -743,9 +994,6 @@ function teleport.use_warp_obelisk(who, item, pos, storage, missions, warp_sickn
     local area_size = (reveal_radius * 2 + 1)
     gapi.add_msg(string.format(locale.gettext("Your scouting reveals a %dx%d area around the landing zone."), area_size, area_size))
   end
-
-  -- Save island animals before leaving
-  save_island_animals(storage)
 
   -- Set away status
   storage.is_away_from_home = true
@@ -827,16 +1075,9 @@ function teleport.use_return_obelisk(who, item, pos, storage, missions, warp_sic
       gapi.add_msg(locale.gettext("Only items you carry will return with you."))
     end
 
-    -- Convert stored abs_ms coordinates to OMT for teleportation
-    local home_abs_ms = TripointAbsMs.new(
-      storage.home_location.x,
-      storage.home_location.y,
-      storage.home_location.z
-    )
-    local home_omt = home_abs_ms:to_omt()
-
-    -- Offset 1 tile north (negative Y in map coordinates)
-    teleport_to_omt(home_omt, TripointRelOmt.new(0, -1, 0))
+    if not return_to_home(storage) then
+      return 0
+    end
 
     -- Retrieve stored items and place them at home
     if items_stored > 0 then
@@ -861,6 +1102,7 @@ function teleport.use_return_obelisk(who, item, pos, storage, missions, warp_sic
 
     -- Clear away status and increment wins
     storage.is_away_from_home = false
+    storage.current_raid_dimension_id = nil
     storage.warp_pulse_count = 0
     local old_raids_won = storage.raids_won or 0
     storage.raids_won = old_raids_won + 1
@@ -906,16 +1148,9 @@ function teleport.return_home_success(storage, missions, warp_sickness)
     return
   end
 
-  -- Convert stored abs_ms coordinates to OMT for teleportation
-  local home_abs_ms = TripointAbsMs.new(
-    storage.home_location.x,
-    storage.home_location.y,
-    storage.home_location.z
-  )
-  local home_omt = home_abs_ms:to_omt()
-
-  -- Offset 1 tile north (negative Y in map coordinates)
-  teleport_to_omt(home_omt, TripointRelOmt.new(0, -1, 0))
+  if not return_to_home(storage) then
+    return
+  end
 
   -- Complete missions when returning home
   local player = gapi.get_avatar()
@@ -933,6 +1168,7 @@ function teleport.return_home_success(storage, missions, warp_sickness)
 
   -- Clear away status and increment wins
   storage.is_away_from_home = false
+  storage.current_raid_dimension_id = nil
   storage.warp_pulse_count = 0
   local old_raids_won = storage.raids_won or 0
   storage.raids_won = old_raids_won + 1
@@ -1009,26 +1245,23 @@ function teleport.resurrect_at_home(storage, missions, warp_sickness)
       lost_count, lost_count > 1 and "s were" or " was"))
   end
 
-  -- Build home position from stored abs_ms coordinates
+  if not return_to_home(storage) then
+    return
+  end
+
   local home_abs_ms = TripointAbsMs.new(
     storage.home_location.x,
     storage.home_location.y,
     storage.home_location.z
   )
-
-  -- Convert abs_ms to OMT for overmap placement
-  local home_omt = home_abs_ms:to_omt()
-  gapi.place_player_overmap_at(home_omt)
-
-  -- Convert abs_ms to local_ms for exact positioning
   local local_pos = gapi.get_map():abs_to_bub(home_abs_ms)
-  gapi.place_player_local_at(local_pos)
 
   -- Fail all raid missions on death
   missions.fail_all_raid_missions(player)
 
   -- Mark raid as failed
   storage.is_away_from_home = false
+  storage.current_raid_dimension_id = nil
   storage.warp_pulse_count = 0
   storage.raids_lost = (storage.raids_lost or 0) + 1
 
