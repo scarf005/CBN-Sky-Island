@@ -395,25 +395,11 @@ local function get_stored_home_omt(storage)
   return TripointAbsOmt.new(home_omt.x, home_omt.y, home_omt.z)
 end
 
-local function get_stored_home_abs_ms(storage)
-  if not storage.home_location then
-    return nil
-  end
-
-  return TripointAbsMs.new(
-    storage.home_location.x,
-    storage.home_location.y,
-    storage.home_location.z
-  )
-end
-
 local function return_to_home(storage)
   if dimension_travel_available() and storage.home_dimension_id == HOME_DIMENSION_ID then
-    local home_abs_ms = get_stored_home_abs_ms(storage)
     local entered = gapi.place_player_dimension_at({
       dimension_id = HOME_DIMENSION_ID,
-      target_omt = home_abs_ms and nil or get_stored_home_omt(storage),
-      target_ms = home_abs_ms,
+      target_omt = get_stored_home_omt(storage),
     })
 
     if not entered then
