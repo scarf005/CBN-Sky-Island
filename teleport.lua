@@ -395,25 +395,25 @@ local function get_stored_home_omt(storage)
   return TripointAbsOmt.new(home_omt.x, home_omt.y, home_omt.z)
 end
 
-local function place_player_at_stored_home(storage)
+local function get_stored_home_abs_ms(storage)
   if not storage.home_location then
-    return
+    return nil
   end
 
-  local home_abs_ms = TripointAbsMs.new(
+  return TripointAbsMs.new(
     storage.home_location.x,
     storage.home_location.y,
     storage.home_location.z
   )
-  local local_pos = gapi.get_map():abs_to_bub(home_abs_ms)
-  gapi.place_player_local_at(local_pos)
 end
 
 local function return_to_home(storage)
   if dimension_travel_available() and storage.home_dimension_id == HOME_DIMENSION_ID then
+    local home_abs_ms = get_stored_home_abs_ms(storage)
     local entered = gapi.place_player_dimension_at({
       dimension_id = HOME_DIMENSION_ID,
-      target_omt = get_stored_home_omt(storage),
+      target_omt = home_abs_ms and nil or get_stored_home_omt(storage),
+      target_ms = home_abs_ms,
     })
 
     if not entered then
@@ -422,7 +422,6 @@ local function return_to_home(storage)
       return false
     end
 
-    place_player_at_stored_home(storage)
     gapi.add_msg(locale.gettext("You feel reality shift around you..."))
     return true
   end
