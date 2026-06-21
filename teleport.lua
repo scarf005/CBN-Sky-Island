@@ -187,6 +187,7 @@ local LOCATION_CONFIG = {
   }
 }
 
+local STORAGE_VERSION = 2
 local HOME_DIMENSION_ID = "sky_island_home"
 local HOME_OMT = { x = 0, y = 0, z = 10 }
 local HOME_BOUNDS_MIN_OMT = { x = -2, y = -2, z = 9 }
@@ -238,6 +239,48 @@ local function remember_player_home(storage)
   ))
 end
 
+local function derive_home_omt_from_location(storage)
+  if storage.home_omt or not storage.home_location then
+    return
+  end
+
+  local home_abs_ms = TripointAbsMs.new(
+    storage.home_location.x,
+    storage.home_location.y,
+    storage.home_location.z
+  )
+  local home_omt = home_abs_ms:to_omt()
+  storage.home_omt = { x = home_omt.x, y = home_omt.y, z = home_omt.z }
+end
+
+function teleport.migrate_legacy_storage(storage)
+  if (storage.skyisland_storage_version or 0) >= STORAGE_VERSION then
+    return
+  end
+
+  storage.raid_dimension_serial = storage.raid_dimension_serial or 0
+  storage.current_raid_dimension_id = storage.current_raid_dimension_id or nil
+
+  if not storage.home_location and not storage.is_away_from_home then
+    remember_player_home(storage)
+  end
+
+  derive_home_omt_from_location(storage)
+
+  if storage.home_location and storage.home_dimension_id == nil then
+    -- Legacy saves kept the sanctuary in the overworld.  Preserve that home instead
+    -- of replacing the player's established island with a fresh pocket copy.
+    storage.home_dimension_id = ""
+  end
+
+  storage.skyisland_storage_version = STORAGE_VERSION
+  util.debug_log(string.format(
+    "Migrated Sky Island storage to v%d (home_dim='%s')",
+    STORAGE_VERSION,
+    tostring(storage.home_dimension_id)
+  ))
+end
+
 function teleport.ensure_home_dimension(storage)
   if not dimension_travel_available() then
     return false
@@ -248,6 +291,7 @@ function teleport.ensure_home_dimension(storage)
       remember_player_home(storage)
     end
     storage.home_dimension_id = HOME_DIMENSION_ID
+    storage.skyisland_storage_version = STORAGE_VERSION
     return true
   end
 
@@ -264,6 +308,7 @@ function teleport.ensure_home_dimension(storage)
   if entered then
     storage.home_dimension_id = HOME_DIMENSION_ID
     remember_player_home(storage)
+    storage.skyisland_storage_version = STORAGE_VERSION
     util.debug_log("Sky Island home moved into pocket dimension")
     return true
   end
@@ -396,15 +441,18 @@ local function get_stored_home_omt(storage)
 end
 
 local function return_to_home(storage)
-  if dimension_travel_available() and storage.home_dimension_id == HOME_DIMENSION_ID then
+  if dimension_travel_available() and storage.home_dimension_id ~= nil then
     local entered = gapi.place_player_dimension_at({
-      dimension_id = HOME_DIMENSION_ID,
+      dimension_id = storage.home_dimension_id,
       target_omt = get_stored_home_omt(storage),
     })
 
     if not entered then
-      gapi.add_msg(locale.gettext("ERROR: Could not return to the Sky Island pocket dimension."))
-      util.debug_log("ERROR: place_player_dimension_at failed while returning home")
+      gapi.add_msg(locale.gettext("ERROR: Could not return to the Sky Island home dimension."))
+      util.debug_log(string.format(
+        "ERROR: place_player_dimension_at failed while returning home to '%s'",
+        tostring(storage.home_dimension_id)
+      ))
       return false
     end
 
@@ -769,8 +817,11 @@ function teleport.use_warp_obelisk(who, item, pos, storage, missions, warp_sickn
     return 0
   end
 
-  -- On BN builds with dimension travel support, keep the sanctuary in a bounded pocket dimension.
-  if dimension_travel_available() then
+  teleport.migrate_legacy_storage(storage)
+
+  -- New saves keep the sanctuary in a bounded pocket dimension.  Legacy saves
+  -- keep their original overworld sanctuary so existing island changes survive.
+  if dimension_travel_available() and storage.home_dimension_id == HOME_DIMENSION_ID then
     if not teleport.ensure_home_dimension(storage) then
       return 0
     end
