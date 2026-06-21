@@ -203,6 +203,22 @@ local function abs_omt_from_table(pos)
   return TripointAbsOmt.new(pos.x, pos.y, pos.z)
 end
 
+local function copy_bub_ms(pos)
+  if not pos then return nil end
+  return TripointBubMs.new(pos.x, pos.y, pos.z)
+end
+
+local function defer_obelisk_action(callback)
+  gapi.add_on_every_x_hook(TimeDuration.from_seconds(1), function()
+    local player = gapi.get_avatar()
+    if player then
+      callback(player)
+    end
+    return false
+  end)
+  return 0
+end
+
 local function dimension_travel_available()
   return gapi and type(gapi.place_player_dimension_at) == "function"
 end
@@ -763,7 +779,14 @@ function teleport.spawn_warped_animals(storage)
 end
 
 -- Use warp obelisk - start expedition
-function teleport.use_warp_obelisk(who, item, pos, storage, missions, warp_sickness)
+function teleport.use_warp_obelisk(who, item, pos, storage, missions, warp_sickness, deferred)
+  if dimension_travel_available() and not deferred then
+    local obelisk_pos = copy_bub_ms(pos)
+    return defer_obelisk_action(function(player)
+      teleport.use_warp_obelisk(player, nil, obelisk_pos, storage, missions, warp_sickness, true)
+    end)
+  end
+
   if storage.is_away_from_home then
     gapi.add_msg(locale.gettext("You are already on an expedition!"))
     return 0
@@ -1010,7 +1033,14 @@ function teleport.use_warp_obelisk(who, item, pos, storage, missions, warp_sickn
 end
 
 -- Use return obelisk - return home
-function teleport.use_return_obelisk(who, item, pos, storage, missions, warp_sickness)
+function teleport.use_return_obelisk(who, item, pos, storage, missions, warp_sickness, deferred)
+  if dimension_travel_available() and not deferred then
+    local obelisk_pos = copy_bub_ms(pos)
+    return defer_obelisk_action(function(player)
+      teleport.use_return_obelisk(player, nil, obelisk_pos, storage, missions, warp_sickness, true)
+    end)
+  end
+
   if not storage.is_away_from_home then
     gapi.add_msg(locale.gettext("You are already home!"))
     return 0
