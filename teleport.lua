@@ -189,9 +189,10 @@ local LOCATION_CONFIG = {
 
 local STORAGE_VERSION = 2
 local HOME_DIMENSION_ID = "sky_island_home"
-local HOME_OMT = { x = 0, y = 0, z = 10 }
-local HOME_BOUNDS_MIN_OMT = { x = -2, y = -2, z = 9 }
-local HOME_BOUNDS_MAX_OMT = { x = 2, y = 2, z = 10 }
+-- Keep the complete special inside one overmap, with the surface open to the sky.
+local HOME_OMT = { x = 2, y = 2, z = 10 }
+local HOME_BOUNDS_MIN_OMT = { x = 0, y = 0, z = 9 }
+local HOME_BOUNDS_MAX_OMT = { x = 4, y = 4, z = 10 }
 local RAID_DIMENSION_PREFIX = "sky_island_raid_"
 local RAID_DIMENSION_STRIDE = 4096
 local DESTINATION_SEARCH_ATTEMPTS = 8
@@ -200,6 +201,18 @@ local DESTINATION_FALLBACK_SAMPLE_LIMIT = 192
 
 local teleport_to_omt
 
+---@class SkyIslandPosition
+---@field x integer
+---@field y integer
+---@field z integer
+
+---@class SkyIslandHomeStorage
+---@field home_location? SkyIslandPosition
+---@field home_omt? SkyIslandPosition
+---@field home_dimension_id? string
+---@field skyisland_storage_version? integer
+
+---@param pos SkyIslandPosition
 local function abs_omt_from_table(pos)
   return TripointAbsOmt.new(pos.x, pos.y, pos.z)
 end
@@ -215,6 +228,7 @@ local function get_current_dimension_id()
   return ""
 end
 
+---@param storage SkyIslandHomeStorage
 local function remember_player_home(storage)
   local player = gapi.get_avatar()
   if not player then return end
@@ -281,6 +295,7 @@ function teleport.migrate_legacy_storage(storage)
   ))
 end
 
+---@param storage SkyIslandHomeStorage
 function teleport.ensure_home_dimension(storage)
   if not dimension_travel_available() then
     return false
@@ -295,15 +310,23 @@ function teleport.ensure_home_dimension(storage)
     return true
   end
 
-  local entered = gapi.place_player_dimension_at({
+  local options = {
     dimension_id = HOME_DIMENSION_ID,
     target_omt = abs_omt_from_table(HOME_OMT),
     world_type = "pocket_dimension",
     bounds_min_omt = abs_omt_from_table(HOME_BOUNDS_MIN_OMT),
     bounds_max_omt = abs_omt_from_table(HOME_BOUNDS_MAX_OMT),
-    pregen_special_id = "Sky Island",
+    pregen_special_id = "Sky Island Pocket",
     pregen_special_omt = abs_omt_from_table(HOME_OMT),
-  })
+  }
+  if storage.home_dimension_id == HOME_DIMENSION_ID and storage.home_omt then
+    -- Re-enter saved islands at their original coordinates without regenerating them.
+    options = {
+      dimension_id = HOME_DIMENSION_ID,
+      target_omt = abs_omt_from_table(storage.home_omt),
+    }
+  end
+  local entered = gapi.place_player_dimension_at(options)
 
   if entered then
     storage.home_dimension_id = HOME_DIMENSION_ID
