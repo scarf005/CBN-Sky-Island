@@ -210,6 +210,8 @@ local teleport_to_omt
 ---@field home_location? SkyIslandPosition
 ---@field home_omt? SkyIslandPosition
 ---@field home_dimension_id? string
+---@field current_raid_dimension_id? string
+---@field raid_dimension_serial? integer
 ---@field skyisland_storage_version? integer
 
 ---@param pos SkyIslandPosition
@@ -495,6 +497,33 @@ local function return_to_home(storage)
   local home_omt = home_abs_ms:to_omt()
   teleport_to_omt(home_omt, TripointRelOmt.new(0, -1, 0))
   return true
+end
+
+---@param storage SkyIslandHomeStorage
+function teleport.cleanup_raid_dimension(storage)
+  local raid_dimension_id = storage.current_raid_dimension_id
+  if not raid_dimension_id then
+    return true
+  end
+
+  if not gapi or type(gapi.delete_dimension) ~= "function" then
+    return false
+  end
+
+  -- delete_dimension fully saves first, so clear the reference before invoking it.
+  storage.current_raid_dimension_id = nil
+  if gapi.delete_dimension(raid_dimension_id) then
+    util.debug_log(string.format("Deleted expedition dimension '%s'", raid_dimension_id))
+    return true
+  end
+
+  storage.current_raid_dimension_id = raid_dimension_id
+  gapi.add_msg(string.format(
+    locale.gettext("ERROR: Could not delete expedition dimension '%s'. It will be retried before the next expedition."),
+    raid_dimension_id
+  ))
+  util.debug_log(string.format("ERROR: Could not delete expedition dimension '%s'", raid_dimension_id))
+  return false
 end
 
 -- Helper: Get player position in OMT coordinates
@@ -842,6 +871,10 @@ function teleport.use_warp_obelisk(who, item, pos, storage, missions, warp_sickn
 
   teleport.migrate_legacy_storage(storage)
 
+  if dimension_travel_available() and not teleport.cleanup_raid_dimension(storage) then
+    return 0
+  end
+
   -- New saves keep the sanctuary in a bounded pocket dimension.  Legacy saves
   -- keep their original overworld sanctuary so existing island changes survive.
   if dimension_travel_available() and storage.home_dimension_id == HOME_DIMENSION_ID then
@@ -1010,8 +1043,8 @@ function teleport.use_warp_obelisk(who, item, pos, storage, missions, warp_sickn
   else
     gapi.add_msg("WARNING: Could not find suitable terrain. Aborting warp.")
     util.debug_log("ERROR: Terrain search failed!")
-    if dimension_travel_available() then
-      return_to_home(storage)
+    if dimension_travel_available() and return_to_home(storage) then
+      teleport.cleanup_raid_dimension(storage)
     end
     -- Refund catalyst if we consumed one
     if loc_config.catalyst_item then
@@ -1161,7 +1194,6 @@ function teleport.use_return_obelisk(who, item, pos, storage, missions, warp_sic
 
     -- Clear away status and increment wins
     storage.is_away_from_home = false
-    storage.current_raid_dimension_id = nil
     storage.warp_pulse_count = 0
     local old_raids_won = storage.raids_won or 0
     storage.raids_won = old_raids_won + 1
@@ -1192,6 +1224,7 @@ function teleport.use_return_obelisk(who, item, pos, storage, missions, warp_sic
       storage.raids_total
     ))
 
+    teleport.cleanup_raid_dimension(storage)
     return 1
   else
     gapi.add_msg(locale.gettext("Cancelled."))
@@ -1227,7 +1260,6 @@ function teleport.return_home_success(storage, missions, warp_sickness)
 
   -- Clear away status and increment wins
   storage.is_away_from_home = false
-  storage.current_raid_dimension_id = nil
   storage.warp_pulse_count = 0
   local old_raids_won = storage.raids_won or 0
   storage.raids_won = old_raids_won + 1
@@ -1257,6 +1289,8 @@ function teleport.return_home_success(storage, missions, warp_sickness)
     storage.raids_won,
     storage.raids_total
   ))
+
+  teleport.cleanup_raid_dimension(storage)
 end
 
 -- Helper: Count stackable items by ID
@@ -1320,7 +1354,6 @@ function teleport.resurrect_at_home(storage, missions, warp_sickness)
 
   -- Mark raid as failed
   storage.is_away_from_home = false
-  storage.current_raid_dimension_id = nil
   storage.warp_pulse_count = 0
   storage.raids_lost = (storage.raids_lost or 0) + 1
 
@@ -1345,6 +1378,8 @@ function teleport.resurrect_at_home(storage, missions, warp_sickness)
     end
     items_preserved_on_death[item] = 0
   end
+
+  teleport.cleanup_raid_dimension(storage)
 end
 
 return teleport

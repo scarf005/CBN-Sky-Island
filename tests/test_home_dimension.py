@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class HomeDimensionTest(unittest.TestCase):
-    def test_home_travel_and_special_footprint(self):
+    def test_dimension_lifecycle_and_special_footprint(self):
         result = subprocess.run(
             ["luajit", "-"], cwd=ROOT, text=True, capture_output=True, check=True,
             input=r'''
@@ -63,6 +63,34 @@ assert(not teleport.ensure_home_dimension(failed))
 assert(next(failed) == nil and current == "")
 gapi.place_player_dimension_at = nil
 assert(not teleport.ensure_home_dimension({}))
+
+local cleanup_storage = {}
+assert(teleport.cleanup_raid_dimension(cleanup_storage))
+
+cleanup_storage.current_raid_dimension_id = "sky_island_raid_000001"
+local deleted_dimension
+local stored_dimension_during_delete = true
+gapi.delete_dimension = function(dimension_id)
+  deleted_dimension = dimension_id
+  stored_dimension_during_delete = cleanup_storage.current_raid_dimension_id
+  return true
+end
+assert(teleport.cleanup_raid_dimension(cleanup_storage))
+assert(deleted_dimension == "sky_island_raid_000001")
+assert(stored_dimension_during_delete == nil)
+assert(cleanup_storage.current_raid_dimension_id == nil)
+
+cleanup_storage.current_raid_dimension_id = "sky_island_raid_000002"
+gapi.delete_dimension = function()
+  assert(cleanup_storage.current_raid_dimension_id == nil)
+  return false
+end
+assert(not teleport.cleanup_raid_dimension(cleanup_storage))
+assert(cleanup_storage.current_raid_dimension_id == "sky_island_raid_000002")
+
+gapi.delete_dimension = nil
+assert(not teleport.cleanup_raid_dimension(cleanup_storage))
+assert(cleanup_storage.current_raid_dimension_id == "sky_island_raid_000002")
 ''',
         )
         special_id, *points = result.stdout.strip().splitlines()
